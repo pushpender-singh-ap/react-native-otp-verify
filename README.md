@@ -32,8 +32,8 @@ yarn add @pushpendersingh/react-native-otp-verify
 
 ### Requirements
 
-- React Native >= 0.60
-- Android API Level >= 19
+- React Native >= 0.76
+- Android API Level >= 24
 - Google Play Services
 
 ---
