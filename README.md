@@ -30,6 +30,27 @@ or
 yarn add @pushpendersingh/react-native-otp-verify
 ```
 
+### Configure iOS Autolinking (Important!)
+
+Since this package is **Android-only**, you need to disable iOS autolinking to avoid build errors on iOS.
+
+Create a `react-native.config.js` file in your project root (if it doesn't exist) and add:
+
+```javascript
+// react-native.config.js
+module.exports = {
+  dependencies: {
+    '@pushpendersingh/react-native-otp-verify': {
+      platforms: {
+        ios: null,
+      },
+    },
+  },
+};
+```
+
+This prevents React Native from trying to link the package on iOS, where it's not supported.
+
 ### Requirements
 
 - React Native >= 0.76
