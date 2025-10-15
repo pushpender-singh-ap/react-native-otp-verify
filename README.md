@@ -1,8 +1,24 @@
 # @pushpendersingh/react-native-otp-verify
 
-⚡ Automatic SMS OTP verification for React Native Android apps using **Google's SMS Retriever API** and **SMS User Consent API**.
+[![npm](https://img.shields.io/npm/v/@pushpendersingh/react-native-otp-verify.svg)](https://www.npmjs.com/package/@pushpendersingh/react-native-otp-verify) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)]
 
-**Zero permissions required** • **Google Play approved** • **Easy to integrate**
+Automatic SMS OTP verification for React Native Android apps using Google's SMS Retriever and User Consent APIs — zero runtime SMS permissions required.
+
+Key points: Zero permissions • Google Play approved • Easy to integrate • TypeScript support
+
+---
+
+## Table of Contents
+
+- [Features](#-features)
+- [Installation](#-installation)
+- [Quick Start](#-quick-start)
+- [API Reference](#-api-reference)
+- [Examples](#-complete-examples)
+- [Backend integration](#-backend-integration)
+- [Troubleshooting](#-troubleshooting)
+- [Contributing](#-contributing)
+- [License](#-license)
 
 ---
 
@@ -12,7 +28,7 @@
 - 🚫 **Zero permissions**: No `READ_SMS` or `RECEIVE_SMS` permissions needed
 - ✅ **Google Play approved**: Uses official Google Play Services APIs
 - 🎯 **Easy to use**: Simple API with TypeScript support
-- 📱 **Android only**: iOS is not supported (will throw error on iOS)
+- 📱 **Cross-platform support**: Android (fully functional) and iOS (graceful error handling)
 - 🔄 **Event-driven**: Listen for SMS events with modern EventEmitter pattern
 - 🛠️ **Built with New Architecture**: Supports React Native's new architecture (TurboModules)
 - 🔒 **Thread-Safe**: Concurrent-safe receiver management with locks and atomic operations
@@ -31,27 +47,6 @@ or
 ```sh
 yarn add @pushpendersingh/react-native-otp-verify
 ```
-
-### Configure iOS Autolinking (Important!)
-
-Since this package is **Android-only**, you need to disable iOS autolinking to avoid build errors on iOS.
-
-Create a `react-native.config.js` file in your project root (if it doesn't exist) and add:
-
-```javascript
-// react-native.config.js
-module.exports = {
-  dependencies: {
-    '@pushpendersingh/react-native-otp-verify': {
-      platforms: {
-        ios: null,
-      },
-    },
-  },
-};
-```
-
-This prevents React Native from trying to link the package on iOS, where it's not supported.
 
 ### Requirements
 
@@ -483,7 +478,36 @@ Both APIs use Google Play Services and require **zero permissions**.
 
 ## 🍎 iOS Support
 
-iOS is **not supported**. The library will throw an error on iOS.
+iOS is **supported with graceful error handling**. The library includes native iOS implementation that:
+
+- ✅ Links properly without build errors
+- ✅ Returns clear error messages when methods are called
+- ✅ Follows proper TurboModule protocol
+- ⚠️ Does not provide OTP verification functionality (Android-only feature)
+
+All methods will reject with error code `PLATFORM_NOT_SUPPORTED` and message explaining that the feature is Android-only.
+
+**Example:**
+
+```typescript
+try {
+  await startSmsRetriever();
+} catch (error) {
+  // On iOS: "@pushpendersingh/react-native-otp-verify package only supports Android."
+  console.log(error.message);
+}
+```
+
+**Best Practice:**
+
+```typescript
+import { Platform } from 'react-native';
+
+if (Platform.OS === 'android') {
+  // Use OTP verification on Android only
+  await startSmsRetriever();
+}
+```
 
 ---
 

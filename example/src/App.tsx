@@ -26,11 +26,6 @@ export default function App() {
   const [isListening, setIsListening] = useState(false);
 
   useEffect(() => {
-    if (Platform.OS !== 'android') {
-      Alert.alert('Error', 'This package only works on Android');
-      return;
-    }
-
     // Get app signature on mount
     getAppSignature()
       .then((hash) => setAppHash(hash))
@@ -84,7 +79,20 @@ export default function App() {
   if (Platform.OS !== 'android') {
     return (
       <SafeAreaView style={styles.container}>
-        <Text style={styles.error}>❌ Android Only</Text>
+        <View style={styles.content}>
+          <Text style={styles.title}>🔐 OTP Verify Demo</Text>
+          <View style={styles.infoBox}>
+            <Text style={styles.info}>
+              ⚠️ This demo is designed for Android devices.
+              {'\n\n'}
+              OTP verification using SMS Retriever API is an Android-only
+              feature.
+              {'\n\n'}
+              The library includes proper iOS support with graceful error
+              handling, but the functionality is not available on iOS.
+            </Text>
+          </View>
+        </View>
       </SafeAreaView>
     );
   }
