@@ -1,4 +1,4 @@
-import { Platform, NativeEventEmitter } from 'react-native';
+import { Platform } from 'react-native';
 import type { Spec } from './NativeReactNativeOtpVerify';
 import ReactNativeOtpVerify from './NativeReactNativeOtpVerify';
 
@@ -38,14 +38,6 @@ const OtpVerify: Spec =
             },
           }
         ) as Spec);
-
-// Event emitter for SMS received events
-let eventEmitter: NativeEventEmitter | null = null;
-if (Platform.OS === 'android') {
-  // For TurboModules, pass null to NativeEventEmitter
-  // The native module will still emit events that we can listen to
-  eventEmitter = new NativeEventEmitter();
-}
 
 export interface SmsMessage {
   /**
@@ -213,17 +205,8 @@ export function addSmsListener(listener: SmsListener) {
     return { remove: () => {} };
   }
 
-  if (!eventEmitter) {
-    console.warn('Event emitter not available');
-    return { remove: () => {} };
-  }
-
-  const subscription = eventEmitter.addListener(
-    'com.pushpendersingh.otpverify:SmsReceived',
-    listener as any
-  );
-
-  return subscription;
+  // Use the new EventEmitter pattern from the spec
+  return OtpVerify.onSmsReceived(listener);
 }
 
 /**
