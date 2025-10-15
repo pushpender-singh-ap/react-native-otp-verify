@@ -53,6 +53,7 @@ yarn add @pushpendersingh/react-native-otp-verify
 - React Native >= 0.76
 - Android API Level >= 24
 - Google Play Services
+- Expo prebuild is supported.
 
 ---
 
