@@ -12,20 +12,32 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.WritableMap
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.module.annotations.ReactModule
-import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.google.android.gms.auth.api.phone.SmsRetriever
 import com.google.android.gms.common.api.CommonStatusCodes
 import com.google.android.gms.common.api.Status
+import com.pushpendersingh.reactnativeotpverify.NativeReactNativeOtpVerifySpec
+import android.util.Log
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 @ReactModule(name = ReactNativeOtpVerifyModule.NAME)
 class ReactNativeOtpVerifyModule(reactContext: ReactApplicationContext) :
   NativeReactNativeOtpVerifySpec(reactContext),
   ActivityEventListener {
 
+  // Thread-safe state management using AtomicBoolean and Volatile
+  @Volatile
   private var smsReceiver: BroadcastReceiver? = null
-  private var isReceiverRegistered = false
+  private val isReceiverRegistered = AtomicBoolean(false)
+  
+  @Volatile
   private var consentReceiver: BroadcastReceiver? = null
-  private var isConsentReceiverRegistered = false
+  private val isConsentReceiverRegistered = AtomicBoolean(false)
+  
+  // Locks for thread-safe register/unregister operations
+  private val receiverLock = ReentrantLock()
+  private val consentLock = ReentrantLock()
 
   init {
     reactContext.addActivityEventListener(this)
@@ -117,168 +129,223 @@ class ReactNativeOtpVerifyModule(reactContext: ReactApplicationContext) :
     }
   }
 
+  /**
+   * Thread-safe receiver registration using ReentrantLock
+   * Prevents race conditions during concurrent register attempts
+   */
   private fun registerReceiver() {
-    if (isReceiverRegistered) {
-      return
-    }
+    receiverLock.withLock {
+      if (isReceiverRegistered.get()) {
+        Log.w(NAME, "Receiver already registered, skipping")
+        return
+      }
 
-    smsReceiver = object : BroadcastReceiver() {
-      override fun onReceive(context: Context, intent: Intent) {
-        if (SmsRetriever.SMS_RETRIEVED_ACTION == intent.action) {
-          val extras = intent.extras
-          val status = extras?.get(SmsRetriever.EXTRA_STATUS) as? Status
+      smsReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+          if (SmsRetriever.SMS_RETRIEVED_ACTION == intent.action) {
+            val extras = intent.extras
+            val status = extras?.get(SmsRetriever.EXTRA_STATUS) as? Status
 
-          when (status?.statusCode) {
-            CommonStatusCodes.SUCCESS -> {
-              // Get SMS message contents
-              val message = extras.getString(SmsRetriever.EXTRA_SMS_MESSAGE)
-              
-              // Get SMS Sender address (available in GMS version 24.20+)
-              val senderAddress = extras.getString(SmsRetriever.EXTRA_SMS_ORIGINATING_ADDRESS)
+            when (status?.statusCode) {
+              CommonStatusCodes.SUCCESS -> {
+                // Get SMS message contents
+                val message = extras.getString(SmsRetriever.EXTRA_SMS_MESSAGE)
+                
+                // Get SMS Sender address (available in GMS version 24.20+)
+                val senderAddress = extras.getString(SmsRetriever.EXTRA_SMS_ORIGINATING_ADDRESS)
 
-              // Send event to JavaScript
-              val params = Arguments.createMap().apply {
-                putString("message", message)
-                putString("status", "success")
-                if (senderAddress != null) {
-                  putString("senderAddress", senderAddress)
+                // Send event to JavaScript using new EventEmitter pattern
+                val params = Arguments.createMap().apply {
+                  putString("message", message)
+                  putString("status", "success")
+                  if (senderAddress != null) {
+                    putString("senderAddress", senderAddress)
+                  }
                 }
+                sendEvent(params)
               }
-              sendEvent("com.pushpendersingh.otpverify:SmsReceived", params)
-            }
-            CommonStatusCodes.TIMEOUT -> {
-              // Timeout occurred (5 minutes)
-              val params = Arguments.createMap().apply {
-                putString("status", "timeout")
-                putString("message", "SMS Retriever timed out after 5 minutes")
+              CommonStatusCodes.TIMEOUT -> {
+                // Timeout occurred (5 minutes)
+                val params = Arguments.createMap().apply {
+                  putString("status", "timeout")
+                  putString("message", "SMS Retriever timed out after 5 minutes")
+                }
+                sendEvent(params)
               }
-              sendEvent("com.pushpendersingh.otpverify:SmsReceived", params)
-            }
-            else -> {
-              val params = Arguments.createMap().apply {
-                putString("status", "error")
-                putString("message", "SMS Retriever failed with status: ${status?.statusCode}")
-              }
-              sendEvent("com.pushpendersingh.otpverify:SmsReceived", params)
-            }
-          }
-        }
-      }
-    }
-
-    val intentFilter = IntentFilter(SmsRetriever.SMS_RETRIEVED_ACTION)
-    
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-      reactApplicationContext.registerReceiver(
-        smsReceiver,
-        intentFilter,
-        SmsRetriever.SEND_PERMISSION,
-        null,
-        Context.RECEIVER_EXPORTED
-      )
-    } else {
-      reactApplicationContext.registerReceiver(
-        smsReceiver,
-        intentFilter,
-        SmsRetriever.SEND_PERMISSION,
-        null
-      )
-    }
-    
-    isReceiverRegistered = true
-  }
-
-  private fun unregisterReceiver() {
-    if (isReceiverRegistered && smsReceiver != null) {
-      try {
-        reactApplicationContext.unregisterReceiver(smsReceiver)
-        isReceiverRegistered = false
-        smsReceiver = null
-      } catch (e: IllegalArgumentException) {
-        // Receiver was not registered, ignore
-      }
-    }
-  }
-
-  private fun registerConsentReceiver() {
-    if (isConsentReceiverRegistered) {
-      return
-    }
-
-    consentReceiver = object : BroadcastReceiver() {
-      override fun onReceive(context: Context, intent: Intent) {
-        if (SmsRetriever.SMS_RETRIEVED_ACTION == intent.action) {
-          val extras = intent.extras
-          val smsRetrieverStatus = extras?.get(SmsRetriever.EXTRA_STATUS) as? Status
-
-          when (smsRetrieverStatus?.statusCode) {
-            CommonStatusCodes.SUCCESS -> {
-              // Get consent intent
-              val consentIntent = extras.getParcelable<Intent>(SmsRetriever.EXTRA_CONSENT_INTENT)
-              
-              try {
-                // Launch the consent dialog
-                val activity = reactApplicationContext.currentActivity
-                activity?.startActivityForResult(consentIntent, SMS_CONSENT_REQUEST)
-              } catch (e: Exception) {
+              else -> {
                 val params = Arguments.createMap().apply {
                   putString("status", "error")
-                  putString("message", "Failed to launch consent dialog: ${e.message}")
+                  putString("message", "SMS Retriever failed with status: ${status?.statusCode}")
                 }
-                sendEvent("com.pushpendersingh.otpverify:SmsReceived", params)
+                sendEvent(params)
               }
-            }
-            CommonStatusCodes.TIMEOUT -> {
-              val params = Arguments.createMap().apply {
-                putString("status", "timeout")
-                putString("message", "SMS consent timed out")
-              }
-              sendEvent("com.pushpendersingh.otpverify:SmsReceived", params)
-              unregisterConsentReceiver()
             }
           }
         }
       }
-    }
 
-    val intentFilter = IntentFilter(SmsRetriever.SMS_RETRIEVED_ACTION)
-    
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-      reactApplicationContext.registerReceiver(
-        consentReceiver,
-        intentFilter,
-        SmsRetriever.SEND_PERMISSION,
-        null,
-        Context.RECEIVER_EXPORTED
-      )
-    } else {
-      reactApplicationContext.registerReceiver(
-        consentReceiver,
-        intentFilter,
-        SmsRetriever.SEND_PERMISSION,
-        null
-      )
-    }
-    
-    isConsentReceiverRegistered = true
-  }
-
-  private fun unregisterConsentReceiver() {
-    if (isConsentReceiverRegistered && consentReceiver != null) {
+      val intentFilter = IntentFilter(SmsRetriever.SMS_RETRIEVED_ACTION)
+      
       try {
-        reactApplicationContext.unregisterReceiver(consentReceiver)
-        isConsentReceiverRegistered = false
-        consentReceiver = null
-      } catch (e: IllegalArgumentException) {
-        // Receiver was not registered, ignore
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+          reactApplicationContext.registerReceiver(
+            smsReceiver,
+            intentFilter,
+            SmsRetriever.SEND_PERMISSION,
+            null,
+            Context.RECEIVER_EXPORTED
+          )
+        } else {
+          reactApplicationContext.registerReceiver(
+            smsReceiver,
+            intentFilter,
+            SmsRetriever.SEND_PERMISSION,
+            null
+          )
+        }
+        
+        isReceiverRegistered.set(true)
+        Log.d(NAME, "SMS Receiver registered successfully")
+      } catch (e: Exception) {
+        Log.e(NAME, "Failed to register receiver", e)
+        smsReceiver = null
       }
     }
   }
 
-  private fun sendEvent(eventName: String, params: WritableMap?) {
-    reactApplicationContext
-      .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-      .emit(eventName, params)
+  /**
+   * Thread-safe receiver unregistration using ReentrantLock
+   * Prevents race conditions and ensures proper cleanup
+   */
+  private fun unregisterReceiver() {
+    receiverLock.withLock {
+      if (!isReceiverRegistered.get() || smsReceiver == null) {
+        return
+      }
+      
+      try {
+        reactApplicationContext.unregisterReceiver(smsReceiver)
+        Log.d(NAME, "SMS Receiver unregistered successfully")
+      } catch (e: IllegalArgumentException) {
+        // Receiver was not registered, ignore
+        Log.w(NAME, "Receiver was not registered", e)
+      } finally {
+        isReceiverRegistered.set(false)
+        smsReceiver = null
+      }
+    }
+  }
+
+  /**
+   * Thread-safe consent receiver registration using ReentrantLock
+   * Prevents race conditions during concurrent register attempts
+   */
+  private fun registerConsentReceiver() {
+    consentLock.withLock {
+      if (isConsentReceiverRegistered.get()) {
+        Log.w(NAME, "Consent receiver already registered, skipping")
+        return
+      }
+
+      consentReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+          if (SmsRetriever.SMS_RETRIEVED_ACTION == intent.action) {
+            val extras = intent.extras
+            val smsRetrieverStatus = extras?.get(SmsRetriever.EXTRA_STATUS) as? Status
+
+            when (smsRetrieverStatus?.statusCode) {
+              CommonStatusCodes.SUCCESS -> {
+                // Get consent intent
+                val consentIntent = extras.getParcelable<Intent>(SmsRetriever.EXTRA_CONSENT_INTENT)
+                
+                try {
+                  // Launch the consent dialog
+                  val activity = reactApplicationContext.currentActivity
+                  activity?.startActivityForResult(consentIntent, SMS_CONSENT_REQUEST)
+                } catch (e: Exception) {
+                  val params = Arguments.createMap().apply {
+                    putString("status", "error")
+                    putString("message", "Failed to launch consent dialog: ${e.message}")
+                  }
+                  sendEvent(params)
+                }
+              }
+              CommonStatusCodes.TIMEOUT -> {
+                val params = Arguments.createMap().apply {
+                  putString("status", "timeout")
+                  putString("message", "SMS consent timed out")
+                }
+                sendEvent(params)
+                unregisterConsentReceiver()
+              }
+            }
+          }
+        }
+      }
+
+      val intentFilter = IntentFilter(SmsRetriever.SMS_RETRIEVED_ACTION)
+      
+      try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+          reactApplicationContext.registerReceiver(
+            consentReceiver,
+            intentFilter,
+            SmsRetriever.SEND_PERMISSION,
+            null,
+            Context.RECEIVER_EXPORTED
+          )
+        } else {
+          reactApplicationContext.registerReceiver(
+            consentReceiver,
+            intentFilter,
+            SmsRetriever.SEND_PERMISSION,
+            null
+          )
+        }
+        
+        isConsentReceiverRegistered.set(true)
+        Log.d(NAME, "Consent receiver registered successfully")
+      } catch (e: Exception) {
+        Log.e(NAME, "Failed to register consent receiver", e)
+        consentReceiver = null
+      }
+    }
+  }
+
+  /**
+   * Thread-safe consent receiver unregistration using ReentrantLock
+   * Prevents race conditions and ensures proper cleanup
+   */
+  private fun unregisterConsentReceiver() {
+    consentLock.withLock {
+      if (!isConsentReceiverRegistered.get() || consentReceiver == null) {
+        return
+      }
+      
+      try {
+        reactApplicationContext.unregisterReceiver(consentReceiver)
+        Log.d(NAME, "Consent receiver unregistered successfully")
+      } catch (e: IllegalArgumentException) {
+        // Receiver was not registered, ignore
+        Log.w(NAME, "Consent receiver was not registered", e)
+      } finally {
+        isConsentReceiverRegistered.set(false)
+        consentReceiver = null
+      }
+    }
+  }
+
+  /**
+   * Thread-safe event emission using the new EventEmitter pattern
+   * The base class provides emitOnSmsReceived method through CodeGen
+   */
+  private fun sendEvent(params: WritableMap?) {
+    if (params == null) return 
+    try {
+      emitOnSmsReceived(params)
+    } catch (e: Exception) {
+      Log.e(NAME, "Error sending event: ${e.message}", e)
+    }
   }
 
   override fun onActivityResult(
@@ -297,14 +364,14 @@ class ReactNativeOtpVerifyModule(reactContext: ReactApplicationContext) :
             putString("message", message)
             putString("status", "success")
           }
-          sendEvent("com.pushpendersingh.otpverify:SmsReceived", params)
+          sendEvent(params)
         } else {
           // User denied consent
           val params = Arguments.createMap().apply {
             putString("status", "error")
             putString("message", "User denied SMS consent")
           }
-          sendEvent("com.pushpendersingh.otpverify:SmsReceived", params)
+          sendEvent(params)
         }
         unregisterConsentReceiver()
       }

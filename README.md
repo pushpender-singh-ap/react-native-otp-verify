@@ -13,8 +13,10 @@
 - ✅ **Google Play approved**: Uses official Google Play Services APIs
 - 🎯 **Easy to use**: Simple API with TypeScript support
 - 📱 **Android only**: iOS is not supported (will throw error on iOS)
-- 🔄 **Event-driven**: Listen for SMS events with callbacks
+- 🔄 **Event-driven**: Listen for SMS events with modern EventEmitter pattern
 - 🛠️ **Built with New Architecture**: Supports React Native's new architecture (TurboModules)
+- 🔒 **Thread-Safe**: Concurrent-safe receiver management with locks and atomic operations
+- 📊 **Enhanced Logging**: Comprehensive debug logging for easier troubleshooting
 
 ---
 

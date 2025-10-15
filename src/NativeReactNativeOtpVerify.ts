@@ -1,4 +1,14 @@
-import { TurboModuleRegistry, type TurboModule } from 'react-native';
+import {
+  TurboModuleRegistry,
+  type TurboModule,
+  type CodegenTypes,
+} from 'react-native';
+
+export type SmsMessage = {
+  message: string | null;
+  status: 'success' | 'timeout' | 'error';
+  senderAddress?: string;
+};
 
 export interface Spec extends TurboModule {
   /**
@@ -28,6 +38,12 @@ export interface Spec extends TurboModule {
    * @returns Promise that resolves when the listener is removed successfully
    */
   removeSmsListener(): Promise<string>;
+
+  /**
+   * Event emitter for SMS received events.
+   * Emits when an SMS is received, times out, or encounters an error.
+   */
+  readonly onSmsReceived: CodegenTypes.EventEmitter<SmsMessage>;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('ReactNativeOtpVerify');
